@@ -17,7 +17,10 @@ hour 2 to 24. The forecast centre at each hour is a local-linear
 (Gaussian-kernel, bandwidth 1.5 in log viewers) regression of that log
 ratio on `ln(hour-1 viewers)`. The spread is the kernel-weighted standard
 deviation of the local-linear residuals at that hour, floored at 0.40 log
-units, times 0.6, times the standard normal quantiles.
+units, times 0.6, times the standard normal quantiles. If the hour-1 print
+lies outside the training range, the spread is widened in quadrature by
+0.5 log units per log unit outside the range (capped at 1.0 extra), since
+the kernel fit is then extrapolating from far-away launches.
 
 Two facts from the data drive this design:
 
@@ -60,6 +63,15 @@ House persistence baseline on the same cases: mean loss 0.3871 (per case
 0.7437, 0.2868, 0.2146, 0.3033). This entry beats it on every practice
 case. Runtime is about 0.09 seconds per case, deterministic (two runs
 produce byte-identical output).
+
+Revision note: the entrypoint was revised after the first build to add an
+extrapolation guardrail (spread widened in quadrature when the hour-1
+print lies outside the training range). All four practice prints are
+inside the training range, so the practice outputs are byte-identical to
+the pre-revision run and the table above is unchanged. The guardrail was
+verified on synthetic out-of-range cases: with hour-1 at 2,000,000 the
+hour-20 median stays 1.62M while the 90% band widens from 1.09M-2.40M to
+0.92M-2.86M.
 
 ## Running it
 

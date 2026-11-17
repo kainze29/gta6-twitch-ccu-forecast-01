@@ -37,9 +37,12 @@ The spread at each hour comes from the kernel-weighted standard deviation
 of the local-linear residuals at that hour, floored at 0.40 log units (the
 floor also guards the extrapolation when hour 1 is larger than anything in
 the training set), times 0.6, times the standard normal quantiles
-(-1.645, -0.674, 0, 0.674, 1.645).  The 0.6 multiplier and the floor were
-chosen on the practice cases: the resulting 90% band covers about 90% of
-practice hours.  The centre is clamped to the training log ratios' range
+(-1.645, -0.674, 0, 0.674, 1.645).  On top of that, if the case's hour-1
+print lies outside the training range, the spread is widened in quadrature
+by 0.5 log units per log unit of distance outside the range (capped at
+1.0), because the kernel fit is then extrapolating from far-away launches.
+The 0.6 multiplier and the floor were chosen on the practice cases: the
+resulting 90% band covers about 90% of practice hours.  The centre is clamped to the training log ratios' range
 (plus a 0.1 margin) at each hour, so an hour-1 print outside the training
 range cannot produce a wild extrapolation.
 
@@ -82,6 +85,12 @@ BANDWIDTH = 1.5
 SPREAD_MULT = 0.6
 # Floor on the per-hour log spread, also a guard for extrapolated hour-1 prints.
 SPREAD_FLOOR = 0.40
+# Extra spread per log unit the hour-1 print sits outside the training
+# range, added in quadrature and capped; the final case's hour-1 print may
+# exceed anything in the training set, and the kernel fit then extrapolates
+# from far-away launches, so the band must widen with the distance.
+SPREAD_EXTRA_PER_LOG = 0.5
+SPREAD_EXTRA_CAP = 1.0
 # A comparable must have this many release-day hours to be used.
 MIN_HOURS = 20
 
@@ -227,6 +236,14 @@ def forecast_case(case):
         hi = max(y for _, y in rows) + 0.1
         centres[hour] = min(max(centre, lo), hi)
         spreads[hour] = max(weighted_std(residuals, weights), SPREAD_FLOOR)
+        # Extrapolation guardrail: if the case's hour-1 print lies outside
+        # the training range, the kernel fit is extrapolating from distant
+        # launches, so widen the spread in proportion to the distance
+        # (in quadrature, capped). In-range cases are unaffected.
+        xs = [x for x, _ in rows]
+        outside = max(min(xs) - log_p1, log_p1 - max(xs), 0.0)
+        extra = min(SPREAD_EXTRA_PER_LOG * outside, SPREAD_EXTRA_CAP)
+        spreads[hour] = math.sqrt(spreads[hour] ** 2 + extra ** 2)
 
     out_hours = []
     for hour in hours:
